@@ -486,6 +486,62 @@ void AnimationGadget::moveKeyframes( const V2f offset )
 	requestRender();
 }
 
+void AnimationGadget::frame() const
+{
+	Box3f b;
+
+	// trying to frame to selected keys first
+	if( !m_selectedKeys.empty() )
+	{
+		for( const auto &key : m_selectedKeys )
+		{
+			b.extendBy( V3f( key.first.time, key.first.value, 0 ) );
+		}
+	}
+	// trying to frame to editable keys next
+	else if( !m_curvePlugsEditable.empty() )
+	{
+		for( const auto &curvePlug : m_curvePlugsEditable )
+		{
+			const Animation::CurvePlug::Keys &keys = curvePlug->keys();
+
+			for( const auto &key : keys )
+ 			{
+				b.extendBy( V3f( key.time, key.value, 0 ) );
+			}
+		}
+	}
+	// trying to frame to visible keys next
+	else if( !m_curvePlugsVisible.empty() )
+	{
+		for( const auto &curvePlug : m_curvePlugsVisible )
+		{
+			const Animation::CurvePlug::Keys &keys = curvePlug->keys();
+
+			for( const auto &key : keys )
+ 			{
+				b.extendBy( V3f( key.time, key.value, 0 ) );
+			}
+		}
+
+	}
+	// setting default framing as last resort
+	// \todo: ideally this would frame to all curves that are part of the
+	// animation node, but just not visible at the moment
+	else
+	{
+		b = Box3f( V3f( -1, -1, 0), V3f( 10, 10, 0 ) );
+	}
+
+	Box3f bound( b.min - V3f( .1 ), b.max + V3f( .1 ) );  // \todo: only needed for single key framing. let's rethink that
+	V3f center = bound.center();
+	bound.min = center + ( bound.min - center ) * 1.2;
+	bound.max = center + ( bound.max - center ) * 1.2;
+	m_viewportGadget->frame( bound );
+
+	return;
+}
+
 bool AnimationGadget::buttonPress( GadgetPtr gadget, const ButtonEvent &event )
 {
 	return true;
@@ -514,9 +570,13 @@ IECore::RunTimeTypedPtr AnimationGadget::dragBegin( GadgetPtr gadget, const Drag
 
 	switch (event.buttons)
 	{
+
 	case ButtonEvent::Left :
+	{
 		m_dragMode = DragMode::Selecting;
 		break;
+	}
+
 	case ButtonEvent::Middle :
 	{
 
@@ -540,8 +600,12 @@ IECore::RunTimeTypedPtr AnimationGadget::dragBegin( GadgetPtr gadget, const Drag
 
 		break;
 	}
+
 	default:
+	{
 		return nullptr;
+	}
+
 	}
 
 	m_dragStartPosition = m_lastDragPosition = V2f( i.x, i.y );
@@ -658,6 +722,12 @@ bool AnimationGadget::keyPress( GadgetPtr gadget, const KeyEvent &event )
 	if( event.key == "I" )
 	{
 		insertKeyframes();
+		return true;
+	}
+
+	if( event.key == "F" )
+	{
+		frame();
 		return true;
 	}
 

@@ -119,6 +119,7 @@ private :
 	void insertKeyframes();
 	void removeKeyframes();
 	void moveKeyframes( const Imath::V2f offset );
+	void frame() const;
 
 	void parentChanged( GraphComponent *child, GraphComponent *oldParent );
 	void cameraChanged();
