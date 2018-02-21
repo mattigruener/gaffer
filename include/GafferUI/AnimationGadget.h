@@ -37,7 +37,9 @@
 #ifndef GAFFERUI_ANIMATIONGADGET_H
 #define GAFFERUI_ANIMATIONGADGET_H
 
-#include <set>
+#include "boost/multi_index_container.hpp"
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/identity.hpp>
 
 #include "Gaffer/Animation.h"
 
@@ -152,8 +154,61 @@ private :
 	std::vector<GadgetPtr> m_animationCurves;
 
 	typedef std::pair<Gaffer::Animation::Key, Gaffer::Animation::CurvePlugPtr> UniqueKey;
-	std::set<UniqueKey> m_selectedKeys;
-	std::map<UniqueKey, Gaffer::Animation::Key> m_dragInitialKeys;
+	typedef boost::multi_index_container<UniqueKey> KeyContainer;
+	typedef KeyContainer::nth_index<0>::type KeyContainerIndex;
+
+	KeyContainer m_selectedKeys;
+
+	struct UniqueKeyComparisonByTime
+	{
+		bool operator()( float time, const UniqueKey& k) const
+		{
+			return time < k.first.time;
+		}
+
+		bool operator()( const UniqueKey& k, float time ) const
+		{
+			return k.first.time < time;
+		}
+	};
+
+	struct UniqueKeyChangeTime
+	{
+
+		UniqueKeyChangeTime( float  newTime )
+			: newTime( newTime )
+		{
+		}
+
+		void operator()(UniqueKey& k)
+		{
+			k.first.time = newTime;
+		}
+
+		private:
+
+			float newTime;
+
+	};
+
+	struct UniqueKeyChangeValue
+	{
+
+		UniqueKeyChangeValue( float  newValue )
+			: newValue( newValue )
+		{
+		}
+
+		void operator()(UniqueKey& k)
+		{
+			k.first.value = newValue;
+		}
+
+		private:
+
+			float newValue;
+
+	};
 
 	int m_currentFrame;
 
@@ -176,6 +231,8 @@ private :
 	Imath::V2f m_lastDragPosition;
 	DragMode m_dragMode;
 	MoveAxis m_moveAxis;
+	UniqueKey m_snappingClosestKey;
+	float m_snappingPreviousOffset;
 };
 
 IE_CORE_DECLAREPTR( AnimationGadget );

@@ -434,55 +434,50 @@ void AnimationGadget::removeKeyframes()
 	requestRender();
 }
 
-// \todo: This seems a bit messy and it doesn't support Undo.
-// Not sure if we'd ideally hold pointers to the Keys instead to edit them in-place?
 void AnimationGadget::moveKeyframes( const V2f offset )
 {
-
-	std::set<UniqueKey> tmp;
-
-	for( auto &uniqueKey : m_selectedKeys )
+	// \todo: defaulting to no snapping, anticipating an extra mode for that at some point
+	float xSnappingOffset = offset.x; // offset relative to beginning of drag
+	if( m_snappingClosestKey.first.type != Animation::Invalid )
 	{
-		// create copy of Key from drag initiation
-		Animation::Key key = m_dragInitialKeys[uniqueKey];
-
-		// remove current key from the curve as it will need to change
-		uniqueKey.second->removeKey( uniqueKey.first.time );
-
-		// apply offsets
-		if( m_moveAxis == MoveAxis::Both || m_moveAxis == MoveAxis::Y )
-		{
-			key.value += offset.y;
-		}
-
-		if( m_moveAxis == MoveAxis::Both || m_moveAxis == MoveAxis::X )
-		{
-			float frame = round( timeToFrame( key.time + offset.x ) );
-			key.time = frameToTime( frame );
-		}
-
-		// add Key back to curve
-		if( uniqueKey.second->hasKey( key.time ) )
-		{
-			// protect existing keys by adding small epsilon
-			// \todo store epsilon somewhere more global
-			key.time += 0.00001;
-		}
-		uniqueKey.second->addKey( key );
-
-		// make sure the right key is used for subsequent user interaction
-		UniqueKey newUniqueKey( key, uniqueKey.second );
-		tmp.insert( newUniqueKey );
-
-		// update storage of the keys' values  when drag was initiated
-		key = m_dragInitialKeys[uniqueKey];
-		m_dragInitialKeys.erase( uniqueKey );
-		// doing insertion last, guarantees Key is available for next lookup
-		m_dragInitialKeys[newUniqueKey] = key;
+		float unsnappedFrame = timeToFrame( m_snappingClosestKey.first.time + offset.x );
+		xSnappingOffset = frameToTime( round( unsnappedFrame ) ) - m_snappingClosestKey.first.time;
 	}
 
-	m_selectedKeys = tmp;
+	// \todo: can be retrieved once
+	KeyContainerIndex& index = m_selectedKeys.get<0>(); 
 
+	for( auto uniqueKeyIt = index.begin(); uniqueKeyIt != index.end(); ++uniqueKeyIt )
+	{
+
+		uniqueKeyIt->second->removeKey( uniqueKeyIt->first.time );
+
+		// apply offset for key's value
+		if( m_moveAxis != MoveAxis::X )
+		{
+			index.modify( uniqueKeyIt, UniqueKeyChangeValue( uniqueKeyIt->first.value + offset.y ) );
+		}
+
+		// apply offset for key's time
+		if( m_moveAxis != MoveAxis::Y )
+		{
+			float newTime = uniqueKeyIt->first.time + xSnappingOffset - m_snappingPreviousOffset;
+
+			// \todo protect existing keys by adding a little extra offset
+			if( uniqueKeyIt->second->hasKey( newTime ) )
+			{
+				newTime += 0.0001;
+			}
+
+			index.modify( uniqueKeyIt, UniqueKeyChangeTime( newTime ) );
+
+		}
+
+		uniqueKeyIt->second->addKey( uniqueKeyIt->first );
+
+	}
+
+	m_snappingPreviousOffset = xSnappingOffset;
 	requestRender();
 }
 
@@ -579,22 +574,16 @@ IECore::RunTimeTypedPtr AnimationGadget::dragBegin( GadgetPtr gadget, const Drag
 
 	case ButtonEvent::Middle :
 	{
-
-		// storing keys at beginning of drag
-		// \todo: could form the basis of a hacky undo? I'd much rather use the
-		// global undo system rather than listening for Ctrl-z and then
-		// restoring what was stored in this container?
-		m_dragInitialKeys.clear();
-		for( auto &key : m_selectedKeys )
-		{
-			m_dragInitialKeys[key] = key.first;
-		}
-
+		// determine axis in which to move the keys in dragMove()
 		bool shiftHeld = event.modifiers & DragDropEvent::Shift;
 		if( shiftHeld )
 		{
 			m_moveAxis = MoveAxis::Undefined;
 		}
+
+		// determine closest key for snapping in dragMove()
+		m_snappingClosestKey = UniqueKey( Animation::Key(), nullptr );
+		m_snappingPreviousOffset = 0;
 
 		m_dragMode = DragMode::Moving;
 
@@ -634,7 +623,7 @@ bool AnimationGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
 		return false;
 	}
 
-	if( m_dragMode == DragMode::Moving )
+	if( m_dragMode == DragMode::Moving && !m_selectedKeys.empty() )
 	{
 
 		if( m_moveAxis == MoveAxis::Undefined )
@@ -648,6 +637,27 @@ bool AnimationGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
 			{
 				m_moveAxis = MoveAxis::Y;
 				Pointer::setCurrent( "moveVertically" );
+			}
+		}
+
+		if( m_moveAxis != MoveAxis::Y && !m_snappingClosestKey.second )
+		{
+			// determine position of selected keyframe that is closest to pointer
+			// \todo: move into separate function, ideally consolidate with Animation::CurvePlug::closestKey?
+			KeyContainer::iterator rightIt = m_selectedKeys.lower_bound( i.x, UniqueKeyComparisonByTime() );
+
+			if( rightIt == m_selectedKeys.end() )
+			{
+				m_snappingClosestKey = *m_selectedKeys.rbegin();
+			}
+			else if( rightIt->first.time == i.x || rightIt == m_selectedKeys.begin() )
+			{
+				m_snappingClosestKey = *rightIt;
+			}
+			else
+			{
+				KeyContainer::iterator leftIt = m_selectedKeys.upper_bound( i.x, UniqueKeyComparisonByTime() );
+				m_snappingClosestKey = fabs( i.x - leftIt->first.time ) < fabs( i.x - rightIt->first.time ) ? *leftIt : *rightIt;
 			}
 		}
 
