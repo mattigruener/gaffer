@@ -33,7 +33,7 @@
 #  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 ##########################################################################
-import IECore
+import imath
 
 import Gaffer
 import GafferScene
@@ -100,6 +100,22 @@ class AnimationPathFilter( Gaffer.PathFilter ) :
         return result
 
 
+class AnimationEditorToolbar( GafferUI.ListContainer ) :
+
+    def __init__( self ) :
+
+        GafferUI.ListContainer.__init__( self, orientation=GafferUI.ListContainer.Orientation.Horizontal )
+
+        # with GafferUI.Frame() as frame :
+
+        with GafferUI.ListContainer( orientation=GafferUI.ListContainer.Orientation.Vertical ) as frame:
+
+            GafferUI.TextWidget( "MyTest" )
+            GafferUI.BoolWidget( image = "delete.png", toolTip = "foo", displayMode = GafferUI.BoolWidget.DisplayMode.Tool )
+
+        self.addChild( frame )
+
+
 class AnimationEditor( GafferUI.NodeSetEditor ) :
 
     def __init__( self, scriptNode, **kw ) :
@@ -115,7 +131,7 @@ class AnimationEditor( GafferUI.NodeSetEditor ) :
             Gaffer.GraphComponentPath( scriptNode, '/', filter = self.__animationFilter ),
             columns = ( GafferUI.PathListingWidget.defaultNameColumn, ),
             displayMode = GafferUI.PathListingWidget.DisplayMode.Tree,
-			allowMultipleSelection=True )
+            allowMultipleSelection=True )
 
         # \todo: set proper size for the curveList widget
         self.__curveList._qtWidget().setSizePolicy( QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred )
@@ -123,7 +139,10 @@ class AnimationEditor( GafferUI.NodeSetEditor ) :
         self.__selectionChangedConnection = self.__curveList.selectionChangedSignal().connect( Gaffer.WeakMethod( self.__selectionChanged ) )
 
         self.__gadgetWidget = GafferUI.GadgetWidget(
-            bufferOptions = set( [ GafferUI.GLWidget.BufferOptions.Double, ] ), )
+            bufferOptions = set(
+                [ GafferUI.GLWidget.BufferOptions.Depth,
+                  GafferUI.GLWidget.BufferOptions.Double, ] ), )
+
         self.__gadgetWidget._qtWidget().setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding )
 
         self.__animationGadget = GafferUI.AnimationGadget()
@@ -143,8 +162,10 @@ class AnimationEditor( GafferUI.NodeSetEditor ) :
 
         self.__visiblePlugs = self.__editablePlugs = None
 
+        self.__gadgetWidget.addOverlay( AnimationEditorToolbar() )
+
         # TODO: initial framing
-        bound = IECore.Box3f( IECore.V3f( -1, -1, 0 ), IECore.V3f( 10, 10, 0 ) )
+        bound = imath.Box3f( imath.V3f( -1, -1, 0 ), imath.V3f( 10, 10, 0 ) )
         self.__gadgetWidget.getViewportGadget().frame( bound )
 
     def _updateFromSet( self ) :
@@ -208,3 +229,10 @@ class AnimationEditor( GafferUI.NodeSetEditor ) :
 
 
 GafferUI.EditorWidget.registerType( "AnimationEditor", AnimationEditor )
+
+
+# class _Toolbar( GafferUI.Frame ) :
+
+#     def __init__( self ) :
+
+#         GafferUI.Frame.__init__( self, borderWidth = 0, borderStyle = GafferUI.Frame.BorderStyle.None )
