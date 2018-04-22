@@ -100,20 +100,20 @@ class AnimationPathFilter( Gaffer.PathFilter ) :
         return result
 
 
-class AnimationEditorToolbar( GafferUI.ListContainer ) :
+# class AnimationEditorToolbar( GafferUI.ListContainer ) :
 
-    def __init__( self ) :
+#     def __init__( self ) :
 
-        GafferUI.ListContainer.__init__( self, orientation=GafferUI.ListContainer.Orientation.Horizontal )
+#         GafferUI.ListContainer.__init__( self, orientation=GafferUI.ListContainer.Orientation.Horizontal )
 
-        # with GafferUI.Frame() as frame :
+#         # with GafferUI.Frame() as frame :
 
-        with GafferUI.ListContainer( orientation=GafferUI.ListContainer.Orientation.Vertical ) as frame:
+#         with GafferUI.ListContainer( orientation=GafferUI.ListContainer.Orientation.Vertical ) as frame:
 
-            GafferUI.TextWidget( "MyTest" )
-            GafferUI.BoolWidget( image = "delete.png", toolTip = "foo", displayMode = GafferUI.BoolWidget.DisplayMode.Tool )
+#             GafferUI.TextWidget( "MyTest" )
+#             GafferUI.BoolWidget( image = "delete.png", toolTip = "foo", displayMode = GafferUI.BoolWidget.DisplayMode.Tool )
 
-        self.addChild( frame )
+#         self.addChild( frame )
 
 
 class AnimationEditor( GafferUI.NodeSetEditor ) :
@@ -142,7 +142,6 @@ class AnimationEditor( GafferUI.NodeSetEditor ) :
             bufferOptions = set(
                 [ GafferUI.GLWidget.BufferOptions.Depth,
                   GafferUI.GLWidget.BufferOptions.Double, ] ), )
-
         self.__gadgetWidget._qtWidget().setSizePolicy( QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding )
 
         self.__animationGadget = GafferUI.AnimationGadget()
@@ -162,7 +161,8 @@ class AnimationEditor( GafferUI.NodeSetEditor ) :
 
         self.__visiblePlugs = self.__editablePlugs = None
 
-        self.__gadgetWidget.addOverlay( AnimationEditorToolbar() )
+        # self.__toolbal = AnimationEditorToolbar()
+        # self.__gadgetWidget.addOverlay( self.__toolbal )
 
         # TODO: initial framing
         bound = imath.Box3f( imath.V3f( -1, -1, 0 ), imath.V3f( 10, 10, 0 ) )

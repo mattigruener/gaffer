@@ -808,8 +808,7 @@ void StandardStyle::renderCurveSegment( const Imath::V2f &start, const Imath::V2
 {
 	glUniform1i( g_isCurveParameter, 1 );
 	glUniform1i( g_borderParameter, 0 );
-	glUniform1f( g_xAntiAliasingParameter, 0.4 );
-	glUniform1f( g_yAntiAliasingParameter, 0.4 );
+	glUniform1f( g_edgeAntiAliasingParameter, 1 );
 	glUniform1i( g_textureTypeParameter, 0 );
 	glUniform1f( g_lineWidthParameter, 3.0 );
 

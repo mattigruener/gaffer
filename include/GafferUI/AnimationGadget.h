@@ -71,7 +71,7 @@ namespace AnimationLayer
 
 IE_CORE_FORWARDDECLARE( CurveGadget );
 
-class AnimationGadget : public Gadget
+class GAFFERUI_API AnimationGadget : public Gadget
 {
 
 public :
@@ -120,12 +120,14 @@ private :
 
 	void insertKeyframes();
 	void removeKeyframes();
-	void moveKeyframes( const Imath::V2f offset );
+	void moveKeyframes( const Imath::V2f currentDragOffset );
 	void frame() const;
 
 	void parentChanged( GraphComponent *child, GraphComponent *oldParent );
 	void cameraChanged();
 	void viewportChanged();
+
+	void plugDirtied( Gaffer::Plug *plug );
 
 	struct AxisDefinition
 	{

@@ -409,7 +409,7 @@ else :
 if env["WARNINGS_AS_ERRORS"] :
 	env.Append(
 		CXXFLAGS = [ "-Werror" ],
-		SHLINKFLAGS = [ "-Wl,-fatal_warnings" ],
+		# SHLINKFLAGS = [ "-Wl,-fatal_warnings" ],
 	)
 
 if env["BUILD_CACHEDIR"] != "" :

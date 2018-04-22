@@ -144,9 +144,12 @@ class GadgetWidget( GafferUI.GLWidget ) :
 
 	def __buttonPress( self, widget, event ) :
 
+		print 'in button press'
+
 		# we get given button presses before they're given to the overlay items,
 		# so we must ignore them so they can be used by the overlay.
 		if self._qtWidget().itemAt( event.line.p0.x, event.line.p0.y ) is not None :
+			print 'found overlay. give up signal'
 			return False
 
 		# but if we're outside the overlay item then we should take the

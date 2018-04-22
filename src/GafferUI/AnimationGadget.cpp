@@ -376,13 +376,25 @@ void AnimationGadget::setVisiblePlugs( const std::vector<Gaffer::Plug *> &plugs 
 			std::string name = plug->fullName();  // \todo: clean up name
 			CurveGadget *curveGadget = new CurveGadget( name, curvePlug );
 			addChild( curveGadget );
-			m_animationCurves.push_back( curveGadget );
+			m_animationCurves.push_back( curveGadget ); // todo: store in map to update when plug changes?
 
 			m_curvePlugsVisible.push_back( curvePlug );
+
+			if( Node *node = curvePlug->node() )
+			{
+				printf("connecting...\n");
+				node->plugDirtiedSignal().connect( boost::bind( &AnimationGadget::plugDirtied, this, ::_1 ) );
+			}
 		}
 	}
 
 	requestRender();
+}
+
+void AnimationGadget::plugDirtied( Gaffer::Plug *plug )
+{
+	requestRender();
+	printf("Dirty dirty plug: %s\n", plug->fullName().c_str());
 }
 
 void AnimationGadget::setEditablePlugs( const std::vector<Gaffer::Plug *> &plugs )
@@ -434,18 +446,21 @@ void AnimationGadget::removeKeyframes()
 	requestRender();
 }
 
-void AnimationGadget::moveKeyframes( const V2f offset )
+void AnimationGadget::moveKeyframes( const V2f currentDragPosition )
 {
-	// \todo: defaulting to no snapping, anticipating an extra mode for that at some point
-	float xSnappingOffset = offset.x; // offset relative to beginning of drag
-	if( m_snappingClosestKey.first.type != Animation::Invalid )
-	{
-		float unsnappedFrame = timeToFrame( m_snappingClosestKey.first.time + offset.x );
-		xSnappingOffset = frameToTime( round( unsnappedFrame ) ) - m_snappingClosestKey.first.time;
-	}
+	// \todo: can be retrieved once and not for every drag delta
+	KeyContainerIndex& index = m_selectedKeys.get<0>();
 
-	// \todo: can be retrieved once
-	KeyContainerIndex& index = m_selectedKeys.get<0>(); 
+	// compute snapping offset used for all keys
+	if( m_moveAxis != MoveAxis::Y )
+	{
+		float xSnappingOffset = currentDragPosition.x - m_dragStartPosition.x;  // \todo: defaulting to no snapping, will need extra mode eventually
+		if( m_snappingClosestKey.first.type != Animation::Invalid )
+		{
+			float unsnappedFrame = timeToFrame( m_snappingClosestKey.first.time + xSnappingOffset );
+			xSnappingOffset = frameToTime( round( unsnappedFrame ) ) - m_snappingClosestKey.first.time;
+		}
+	}
 
 	for( auto uniqueKeyIt = index.begin(); uniqueKeyIt != index.end(); ++uniqueKeyIt )
 	{
@@ -455,12 +470,14 @@ void AnimationGadget::moveKeyframes( const V2f offset )
 		// apply offset for key's value
 		if( m_moveAxis != MoveAxis::X )
 		{
-			index.modify( uniqueKeyIt, UniqueKeyChangeValue( uniqueKeyIt->first.value + offset.y ) );
+			float incrementalDragOffsetY = currentDragPosition.y - m_lastDragPosition.y;
+			index.modify( uniqueKeyIt, UniqueKeyChangeValue( uniqueKeyIt->first.value + incrementalDragOffsetY ) );
 		}
 
 		// apply offset for key's time
 		if( m_moveAxis != MoveAxis::Y )
 		{
+
 			float newTime = uniqueKeyIt->first.time + xSnappingOffset - m_snappingPreviousOffset;
 
 			// \todo protect existing keys by adding a little extra offset
@@ -471,13 +488,13 @@ void AnimationGadget::moveKeyframes( const V2f offset )
 
 			index.modify( uniqueKeyIt, UniqueKeyChangeTime( newTime ) );
 
+			m_snappingPreviousOffset = xSnappingOffset;
 		}
 
 		uniqueKeyIt->second->addKey( uniqueKeyIt->first );
 
 	}
 
-	m_snappingPreviousOffset = xSnappingOffset;
 	requestRender();
 }
 
@@ -661,7 +678,7 @@ bool AnimationGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
 			}
 		}
 
-		moveKeyframes( V2f( i.x, i.y ) - m_dragStartPosition );
+		moveKeyframes( V2f( i.x, i.y ) );
 	}
 
 	m_lastDragPosition = V2f( i.x, i.y );

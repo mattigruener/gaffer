@@ -124,6 +124,9 @@ class GAFFERUI_API ViewportGadget : public Gadget
 		/// move to follow drags that would otherwise be exiting the viewport.
 		void setDragTracking( bool dragTracking );
 		bool getDragTracking() const;
+		/// \todo doc
+		void setVariableAspectZoom( bool variableAspectZoom );
+		bool getVariableAspectZoom() const;
 
 		/// Fills the passed vector with all the Gadgets below the specified position.
 		/// The first Gadget in the list will be the frontmost, determined either by the
@@ -247,6 +250,8 @@ class GAFFERUI_API ViewportGadget : public Gadget
 		float m_dragTrackingThreshold;
 		Imath::V2f m_dragTrackingVelocity;
 		double m_dragTrackingTime;
+
+		bool m_variableAspectZoom;
 
 		UnarySignal m_viewportChangedSignal;
 		UnarySignal m_cameraChangedSignal;

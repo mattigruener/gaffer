@@ -38,6 +38,7 @@
 #include "GafferUI/ViewportGadget.h"
 
 #include "GafferUI/Style.h"
+#include "GafferUI/Pointer.h"
 
 #include "IECoreGL/PerspectiveCamera.h"
 #include "IECoreGL/Selector.h"
@@ -382,7 +383,15 @@ class ViewportGadget::CameraController : public boost::noncopyable
 			None,
 			Track,
 			Tumble,
-			Dolly
+			Dolly,
+			VariableAspectZoom
+		};
+
+		enum class ZoomAxis
+		{
+			Undefined,
+			X,
+			Y
 		};
 
 		/// Starts a motion of the specified type.
@@ -413,6 +422,7 @@ class ViewportGadget::CameraController : public boost::noncopyable
 					tumble( newPosition );
 					break;
 				case Dolly :
+				case VariableAspectZoom :
 					dolly( newPosition );
 					break;
 				default :
@@ -432,12 +442,15 @@ class ViewportGadget::CameraController : public boost::noncopyable
 					tumble( endPosition );
 					break;
 				case Dolly :
+				case VariableAspectZoom :
 					dolly( endPosition );
 					break;
 				default :
 					break;
 			}
 			m_motionType = None;
+			m_zoomAxis = ZoomAxis::Undefined;
+			Pointer::setCurrent( "" );
 		}
 
 	private:
@@ -515,9 +528,39 @@ class ViewportGadget::CameraController : public boost::noncopyable
 				newWidth = std::max( newWidth, 0.01f );
 
 				float scale = newWidth / screenWindow.size().x;
+				if( m_motionType == Dolly )
+				{
+					screenWindow.min = (screenWindow.min - centre) * scale + centre;
+					screenWindow.max = (screenWindow.max - centre) * scale + centre;
+				}
+				else if( m_motionType == VariableAspectZoom )
+				{
+					if( m_zoomAxis == ZoomAxis::Undefined )
+					{
+						if( abs( dv.x ) >= abs( dv.y ) )
+						{
+							m_zoomAxis = ZoomAxis::X;
+							Pointer::setCurrent( "moveHorizontally" );
+						}
+						else
+						{
+							m_zoomAxis = ZoomAxis::Y;
+							Pointer::setCurrent( "moveVertically" );
+						}
+					}
 
-				screenWindow.min = (screenWindow.min - center) * scale + center;
-				screenWindow.max = (screenWindow.max - center) * scale + center;
+					if( m_zoomAxis == ZoomAxis::X )
+					{
+						screenWindow.min.x = (screenWindow.min.x - centre.x) * scale + centre.x;
+						screenWindow.max.x = (screenWindow.max.x - centre.x) * scale + centre.x;
+					}
+					else
+					{
+						screenWindow.min.y = (screenWindow.min.y - centre.y) * scale + centre.y;
+						screenWindow.max.y = (screenWindow.max.y - centre.y) * scale + centre.y;
+					}
+				}
+
 				m_screenWindow->writable() = screenWindow;
 			}
 		}
@@ -543,6 +586,7 @@ class ViewportGadget::CameraController : public boost::noncopyable
 
 		bool m_orthographic3D;
 
+		ZoomAxis m_zoomAxis;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -556,7 +600,8 @@ ViewportGadget::ViewportGadget( GadgetPtr primaryChild )
 	  m_cameraController( new CameraController( new IECoreScene::Camera ) ),
 	  m_cameraInMotion( false ),
 	  m_cameraEditable( true ),
-	  m_dragTracking( false )
+	  m_dragTracking( false ),
+	  m_variableAspectZoom( false )
 {
 	// Viewport visibility is managed by GadgetWidgets,
 	setVisible( false );
@@ -819,6 +864,16 @@ bool ViewportGadget::getDragTracking() const
 	return m_dragTracking;
 }
 
+void ViewportGadget::setVariableAspectZoom( bool variableAspectZoom )
+{
+	m_variableAspectZoom = variableAspectZoom;
+}
+
+bool ViewportGadget::getVariableAspectZoom() const
+{
+	return m_variableAspectZoom;
+}
+
 void ViewportGadget::gadgetsAt( const Imath::V2f &rasterPosition, std::vector<GadgetPtr> &gadgets ) const
 {
 	std::vector<HitRecord> selection;
@@ -934,7 +989,7 @@ void ViewportGadget::childRemoved( GraphComponent *parent, GraphComponent *child
 
 bool ViewportGadget::buttonPress( GadgetPtr gadget, const ButtonEvent &event )
 {
-	if( event.modifiers == ModifiableEvent::Alt )
+	if( event.modifiers == ModifiableEvent::Alt || ( getVariableAspectZoom() && event.modifiers == ModifiableEvent::Shift && event.buttons == ButtonEvent::Right ) )
 	{
 		// accept press so we get a dragBegin opportunity for camera movement
 		return true;
@@ -1073,7 +1128,7 @@ IECore::RunTimeTypedPtr ViewportGadget::dragBegin( GadgetPtr gadget, const DragD
 		}
 	}
 
-	if ( event.modifiers == ModifiableEvent::Alt || ( event.buttons == ButtonEvent::Middle && event.modifiers == ModifiableEvent::None ) )
+	if ( event.modifiers == ModifiableEvent::Alt || ( event.buttons == ButtonEvent::Middle && event.modifiers == ModifiableEvent::None ) || ( getVariableAspectZoom() && event.modifiers == ModifiableEvent::Shift && event.buttons == ButtonEvent::Right ) )
 	{
 		// start camera motion
 
@@ -1087,7 +1142,7 @@ IECore::RunTimeTypedPtr ViewportGadget::dragBegin( GadgetPtr gadget, const DragD
 				motionType = CameraController::Track;
 				break;
 			case ButtonEvent::Right :
-				motionType = CameraController::Dolly;
+				motionType = event.modifiers == ModifiableEvent::Shift ? CameraController::VariableAspectZoom : CameraController::Dolly;
 				break;
 			default :
 				motionType = CameraController::None;
