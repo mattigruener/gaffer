@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (c) 2017, Matti Gruener. All rights reserved.
+//  Copyright (c) 2018, Matti Gruner. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are
@@ -56,7 +56,7 @@ using namespace Imath;
 namespace
 {
 
-// \todo: probably needs a way to determine fps at some point
+// \todo: Needs a way to determine fps at some point. For now, we always use 24 fps
 float frameToTime( float frame )
 {
 	return frame / 24.0;
@@ -65,6 +65,11 @@ float frameToTime( float frame )
 float timeToFrame( float time )
 {
 	return time * 24.0;
+}
+
+bool areFramesIdentical( float lhsTime, float rhsTime )
+{
+	return round( timeToFrame( lhsTime ) ) == round( timeToFrame( rhsTime ) );
 }
 
 } // namespace
@@ -76,7 +81,7 @@ float timeToFrame( float time )
 IE_CORE_DEFINERUNTIMETYPED( AnimationGadget );
 
 AnimationGadget::AnimationGadget()
-	: m_viewportGadget( nullptr ), m_currentFrame( 0 ), m_dragStartPosition( 0 ), m_lastDragPosition( 0 ), m_dragMode( DragMode::None ), m_moveAxis( MoveAxis::Both )
+	: m_viewportGadget( nullptr ), m_currentFrame( 0 ), m_dragStartPosition( 0 ), m_lastDragPosition( 0 ), m_dragMode( DragMode::None ), m_moveAxis( MoveAxis::Both ), m_snappingClosestKey( nullptr ), m_snappingClosestKeyTime( 0 )
 {
 	parentChangedSignal().connect( boost::bind( &AnimationGadget::parentChanged, this, ::_1, ::_2 ) );
 
@@ -101,9 +106,6 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 	glDisable( GL_DEPTH_TEST );
 
-	AxisDefinition xAxis, yAxis;
-	computeGrid( xAxis, yAxis );
-
 	Imath::V2i resolution = m_viewportGadget->getViewport();
 
 	ViewportGadget::RasterScope rasterScope( m_viewportGadget );
@@ -113,6 +115,10 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 	case AnimationLayer::Grid :
 	{
+		// \todo: make this is a struct so that we have more descriptive access to members below?
+		AxisDefinition xAxis, yAxis;
+		computeGrid( xAxis, yAxis );
+
 		// drawing base grid
 		for( const auto &x : xAxis.main )
 		{
@@ -135,50 +141,30 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 	case AnimationLayer::Curves :
 	{
-		for( auto &curvePlug : m_curvePlugsEditable )
-		{
-			const Animation::CurvePlug::Keys &keys = curvePlug->keys();
-			for( Animation::CurvePlug::Keys::const_iterator it = keys.begin(); it != keys.end(); ++it )
-			{
-				const Animation::Key &key = (*it);
-				if( m_selectedKeys.count( UniqueKey( key, curvePlug ) ) > 0 )
-				{
-					continue;
-				}
-
-				V2f keyPosition = m_viewportGadget->worldToRasterSpace( V3f( key.time, key.value, 0 ) );
-				style->renderKeyFrame( keyPosition, Style::NormalState );
-			}
-		}
-
+		// The CurveGadget does all the work for us
 		break;
-
 	}
 
-	case AnimationLayer::Highlighting :
+	case AnimationLayer::Keys :
 	{
-		for( auto &curvePlug : m_curvePlugsVisible )
+		for( const Animation::CurvePlugPtr &curvePlug : m_curvePlugsEditable )
 		{
-			const Animation::CurvePlug::Keys &keys = curvePlug->keys();
-			for( Animation::CurvePlug::Keys::const_iterator it = keys.begin(); it != keys.end(); ++it )
+			for( Animation::Key &key : *curvePlug )
 			{
-				const Animation::Key &key = (*it);
-				if( m_selectedKeys.count( UniqueKey( key, curvePlug ) ) == 0 )
-				{
-					continue;
-				}
-
-				V2f keyPosition = m_viewportGadget->worldToRasterSpace( V3f( key.time, key.value, 0 ) );
-				style->renderKeyFrame( keyPosition, Style::HighlightedState );
+				bool isSelected = m_selectedKeys.count( Animation::KeyPtr( &key ) ) > 0;
+				V2f keyPosition = m_viewportGadget->worldToRasterSpace( V3f( key.getTime(), key.getValue(), 0 ) );
+				style->renderKeyFrame( keyPosition, isSelected ? Style::HighlightedState : Style::NormalState );
 			}
 		}
-
 		break;
 	}
 
 
 	case AnimationLayer::Axes :
 	{
+		AxisDefinition xAxis, yAxis;
+		computeGrid( xAxis, yAxis );
+
 		// draw frame indication
 		int currentFrameRasterPosition = m_viewportGadget->worldToRasterSpace( V3f( m_currentFrame / 24.0, 0, 0 ) ).x;
 		style->renderLine( IECore::LineSegment3f( V3f( currentFrameRasterPosition, 0, 0 ), V3f( currentFrameRasterPosition, resolution.y, 0 ) ), 2.0, new Imath::Color3f( 1.0, 0.2, 0.2 ) );
@@ -197,7 +183,7 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 		for( const auto &x : xAxis.main )
 		{
-			if( x.first < 60 )
+			if( x.first < 60 )  // \todo: remove magic number
 			{
 				continue;
 			}
@@ -218,7 +204,6 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 		for( const auto &y : yAxis.main )
 		{
-
 			if( y.first > resolution.y - 20 )
 			{
 				continue;
@@ -237,7 +222,6 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 			glPopMatrix();
 		}
-
 		break;
 
 	}
@@ -251,6 +235,7 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 			b.extendBy( m_viewportGadget->gadgetToRasterSpace( V3f( m_lastDragPosition.x, m_lastDragPosition.y, 0 ), this ) );
 			style->renderSelectionBox( b );
 		}
+		break;
 	}
 
 	default:
@@ -366,15 +351,14 @@ void AnimationGadget::setVisiblePlugs( const std::vector<Gaffer::Plug *> &plugs 
 			removeChild( curveGadget );
 		}
 	}
-	// all these pointers are invalid now anyway
 	m_animationCurves.clear();
 
 	for( const auto &plug : plugs )
 	{
 		if( Gaffer::Animation::CurvePlug *curvePlug = IECore::runTimeCast<Gaffer::Animation::CurvePlug>( plug->getInput()->parent() ) )
 		{
-			std::string name = plug->fullName();  // \todo: clean up name
-			CurveGadget *curveGadget = new CurveGadget( name, curvePlug );
+			std::string plugName = plug->fullName();
+			CurveGadget *curveGadget = new CurveGadget( plugName, curvePlug );
 			addChild( curveGadget );
 			m_animationCurves.push_back( curveGadget ); // todo: store in map to update when plug changes?
 
@@ -382,7 +366,6 @@ void AnimationGadget::setVisiblePlugs( const std::vector<Gaffer::Plug *> &plugs 
 
 			if( Node *node = curvePlug->node() )
 			{
-				printf("connecting...\n");
 				node->plugDirtiedSignal().connect( boost::bind( &AnimationGadget::plugDirtied, this, ::_1 ) );
 			}
 		}
@@ -394,20 +377,26 @@ void AnimationGadget::setVisiblePlugs( const std::vector<Gaffer::Plug *> &plugs 
 void AnimationGadget::plugDirtied( Gaffer::Plug *plug )
 {
 	requestRender();
-	printf("Dirty dirty plug: %s\n", plug->fullName().c_str());
+	// printf("Dirty dirty plug: %s\n", plug->fullName().c_str());
 }
 
 void AnimationGadget::setEditablePlugs( const std::vector<Gaffer::Plug *> &plugs )
 {
 	m_curvePlugsEditable.clear();
-
-	// \todo: also needs to modify existing selection
-
 	for( auto &plug : plugs )
 	{
 		if( Gaffer::Animation::CurvePlug *curvePlug = IECore::runTimeCast<Gaffer::Animation::CurvePlug>( plug->getInput()->parent() ) )
 		{
 			m_curvePlugsEditable.push_back( curvePlug );
+		}
+	}
+
+	// Update selection to only contain Keys that belong to editable CurvePlugs.
+	for( auto &key : m_selectedKeys )
+	{
+		if( std::find( m_curvePlugsEditable.begin(), m_curvePlugsEditable.end(), key->parent() ) == m_curvePlugsEditable.end() )
+		{
+			m_selectedKeys.erase( key );
 		}
 	}
 
@@ -417,7 +406,6 @@ void AnimationGadget::setEditablePlugs( const std::vector<Gaffer::Plug *> &plugs
 void AnimationGadget::setFrame( float frame )
 {
 	m_currentFrame = frame;
-
 	requestRender();
 }
 
@@ -429,70 +417,92 @@ void AnimationGadget::insertKeyframes()
 		if( !curvePlug->hasKey( time ) )
 		{
 			float value = curvePlug->evaluate( time );
-			curvePlug->addKey( Animation::Key( time, value ) );
+			curvePlug->addKey( new Animation::Key( time, value ) ); // \todo: should eventually specify key type
 		}
 	}
-
 	requestRender();
 }
 
 void AnimationGadget::removeKeyframes()
 {
-	for( const auto &i : m_selectedKeys )
+	for( const auto &keyPtr : m_selectedKeys )
 	{
-		i.second->removeKey( i.first.time );
+		Animation::CurvePlug *parent = keyPtr->parent();
+		if( parent )
+		{
+			parent->removeKey( keyPtr );
+		}
 	}
+
+	m_selectedKeys.clear();
 
 	requestRender();
 }
 
 void AnimationGadget::moveKeyframes( const V2f currentDragPosition )
 {
-	// \todo: can be retrieved once and not for every drag delta
-	KeyContainerIndex& index = m_selectedKeys.get<0>();
-
-	// compute snapping offset used for all keys
+	// Compute snapping offset used for all keys
+	float xSnappingCurrentOffset = 0;
 	if( m_moveAxis != MoveAxis::Y )
 	{
-		float xSnappingOffset = currentDragPosition.x - m_dragStartPosition.x;  // \todo: defaulting to no snapping, will need extra mode eventually
-		if( m_snappingClosestKey.first.type != Animation::Invalid )
+		float dragOffset = currentDragPosition.x - m_dragStartPosition.x;
+		xSnappingCurrentOffset = dragOffset;
+		if( m_snappingClosestKey )
 		{
-			float unsnappedFrame = timeToFrame( m_snappingClosestKey.first.time + xSnappingOffset );
-			xSnappingOffset = frameToTime( round( unsnappedFrame ) ) - m_snappingClosestKey.first.time;
+			// printf( "closest key at %f\n", m_snappingClosestKey->getTime() * 24.0 );
+			float unsnappedFrame = timeToFrame( m_snappingClosestKeyTime + xSnappingCurrentOffset );
+			xSnappingCurrentOffset = frameToTime( round( unsnappedFrame ) ) - m_snappingClosestKeyTime;
+		}
+		printf( "snapOffset: %f\n", xSnappingCurrentOffset * 24 );
+	}
+
+	for( auto &key : m_selectedKeys )
+	{
+		// Apply offset for key's value
+		if( m_moveAxis != MoveAxis::X )
+		{
+			key->setValue( key->getValue() + currentDragPosition.y - m_lastDragPosition.y );
+		}
+
+		// Apply offset for key's time
+		if( m_moveAxis != MoveAxis::Y )
+		{
+			float dragStartPosition = key->getTime() - m_xSnappingPreviousOffset;
+			float newTime = dragStartPosition + xSnappingCurrentOffset;
+
+			// If a key already exists on the new frame, we overwrite it, but
+			// store it for reinserting should the drag continue and the frame
+			// free up again.
+			Animation::KeyPtr potentialClash = key->parent()->closestKey( newTime );
+			if( potentialClash != key && areFramesIdentical( newTime, potentialClash->getTime() ) )
+			{
+				m_overwrittenKeys.emplace( potentialClash, potentialClash->parent() );
+				potentialClash->parent()->removeKey( potentialClash );
+			}
+
+			key->setTime( newTime );
 		}
 	}
 
-	for( auto uniqueKeyIt = index.begin(); uniqueKeyIt != index.end(); ++uniqueKeyIt )
+	// Check if any of the previously overwritten keys can be inserted back into the curve
+	for( auto keyAndParent : m_overwrittenKeys )
 	{
-
-		uniqueKeyIt->second->removeKey( uniqueKeyIt->first.time );
-
-		// apply offset for key's value
-		if( m_moveAxis != MoveAxis::X )
+		Animation::KeyPtr potentialClash = keyAndParent.second->closestKey( keyAndParent.first->getTime() );
+		if( !potentialClash )
 		{
-			float incrementalDragOffsetY = currentDragPosition.y - m_lastDragPosition.y;
-			index.modify( uniqueKeyIt, UniqueKeyChangeValue( uniqueKeyIt->first.value + incrementalDragOffsetY ) );
+			continue;
 		}
 
-		// apply offset for key's time
-		if( m_moveAxis != MoveAxis::Y )
+		if( !areFramesIdentical( keyAndParent.first->getTime(), potentialClash->getTime() ) )
 		{
-
-			float newTime = uniqueKeyIt->first.time + xSnappingOffset - m_snappingPreviousOffset;
-
-			// \todo protect existing keys by adding a little extra offset
-			if( uniqueKeyIt->second->hasKey( newTime ) )
-			{
-				newTime += 0.0001;
-			}
-
-			index.modify( uniqueKeyIt, UniqueKeyChangeTime( newTime ) );
-
-			m_snappingPreviousOffset = xSnappingOffset;
+			keyAndParent.second->addKey( keyAndParent.first );
+			m_overwrittenKeys.erase( keyAndParent );
 		}
+	}
 
-		uniqueKeyIt->second->addKey( uniqueKeyIt->first );
-
+	if( m_moveAxis != MoveAxis::Y )
+	{
+		m_xSnappingPreviousOffset = xSnappingCurrentOffset;
 	}
 
 	requestRender();
@@ -502,50 +512,40 @@ void AnimationGadget::frame() const
 {
 	Box3f b;
 
-	// trying to frame to selected keys first
-	if( !m_selectedKeys.empty() )
+	if( !m_selectedKeys.empty() ) // trying to frame to selected keys first
 	{
 		for( const auto &key : m_selectedKeys )
 		{
-			b.extendBy( V3f( key.first.time, key.first.value, 0 ) );
+			b.extendBy( V3f( key->getTime(), key->getValue(), 0 ) );
 		}
 	}
-	// trying to frame to editable keys next
-	else if( !m_curvePlugsEditable.empty() )
+	else if( !m_curvePlugsEditable.empty() ) // trying to frame to editable curves next
 	{
 		for( const auto &curvePlug : m_curvePlugsEditable )
 		{
-			const Animation::CurvePlug::Keys &keys = curvePlug->keys();
-
-			for( const auto &key : keys )
+			for( const auto &key : *curvePlug )
  			{
-				b.extendBy( V3f( key.time, key.value, 0 ) );
+				b.extendBy( V3f( key.getTime(), key.getValue(), 0 ) );
 			}
 		}
 	}
-	// trying to frame to visible keys next
-	else if( !m_curvePlugsVisible.empty() )
+	else if( !m_curvePlugsVisible.empty() ) // trying to frame to visible curves next
 	{
 		for( const auto &curvePlug : m_curvePlugsVisible )
 		{
-			const Animation::CurvePlug::Keys &keys = curvePlug->keys();
-
-			for( const auto &key : keys )
+			for( const auto &key : *curvePlug )
  			{
-				b.extendBy( V3f( key.time, key.value, 0 ) );
+				b.extendBy( V3f( key.getTime(), key.getValue(), 0 ) );
 			}
 		}
-
 	}
-	// setting default framing as last resort
-	// \todo: ideally this would frame to all curves that are part of the
-	// animation node, but just not visible at the moment
-	else
+	else // setting default framing as last resort
 	{
-		b = Box3f( V3f( -1, -1, 0), V3f( 10, 10, 0 ) );
+		b = Box3f( V3f( -1, -1, 0), V3f( 1, 1, 0 ) );
 	}
 
-	Box3f bound( b.min - V3f( .1 ), b.max + V3f( .1 ) );  // \todo: only needed for single key framing. let's rethink that
+	// add some margins. necessary if only a single key was used for framing.
+	Box3f bound( b.min - V3f( .1 ), b.max + V3f( .1 ) );
 	V3f center = bound.center();
 	bound.min = center + ( bound.min - center ) * 1.2;
 	bound.max = center + ( bound.max - center ) * 1.2;
@@ -580,7 +580,7 @@ IECore::RunTimeTypedPtr AnimationGadget::dragBegin( GadgetPtr gadget, const Drag
 		return nullptr;
 	}
 
-	switch (event.buttons)
+	switch ( event.buttons )
 	{
 
 	case ButtonEvent::Left :
@@ -599,17 +599,27 @@ IECore::RunTimeTypedPtr AnimationGadget::dragBegin( GadgetPtr gadget, const Drag
 		}
 
 		// determine closest key for snapping in dragMove()
-		m_snappingClosestKey = UniqueKey( Animation::Key(), nullptr );
-		m_snappingPreviousOffset = 0;
+		m_snappingClosestKey = nullptr;
+		m_snappingClosestKeyTime = 0;
+		m_xSnappingPreviousOffset = 0;
 
 		m_dragMode = DragMode::Moving;
+
+		// Clean up selection so that we operate on valid Keys only
+		for( auto &key : m_selectedKeys )
+		{
+			if( !key->parent() )
+			{
+				m_selectedKeys.erase( key );
+				continue;
+			}
+		}
 
 		break;
 	}
 
 	default:
 	{
-		return nullptr;
 	}
 
 	}
@@ -657,25 +667,26 @@ bool AnimationGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
 			}
 		}
 
-		if( m_moveAxis != MoveAxis::Y && !m_snappingClosestKey.second )
+		if( m_moveAxis != MoveAxis::Y && !m_snappingClosestKey )
 		{
 			// determine position of selected keyframe that is closest to pointer
 			// \todo: move into separate function, ideally consolidate with Animation::CurvePlug::closestKey?
-			KeyContainer::iterator rightIt = m_selectedKeys.lower_bound( i.x, UniqueKeyComparisonByTime() );
+			auto rightIt = m_selectedKeys.lower_bound( Animation::KeyPtr( new Animation::Key(i.x, 0) ) );
 
 			if( rightIt == m_selectedKeys.end() )
 			{
 				m_snappingClosestKey = *m_selectedKeys.rbegin();
 			}
-			else if( rightIt->first.time == i.x || rightIt == m_selectedKeys.begin() )
+			else if( (*rightIt)->getTime() == i.x || rightIt == m_selectedKeys.begin() )
 			{
 				m_snappingClosestKey = *rightIt;
 			}
 			else
 			{
-				KeyContainer::iterator leftIt = m_selectedKeys.upper_bound( i.x, UniqueKeyComparisonByTime() );
-				m_snappingClosestKey = fabs( i.x - leftIt->first.time ) < fabs( i.x - rightIt->first.time ) ? *leftIt : *rightIt;
+				auto leftIt = std::prev( rightIt );
+				m_snappingClosestKey = fabs( i.x - (*leftIt)->getTime() ) < fabs( i.x - (*rightIt)->getTime() ) ? *leftIt : *rightIt;
 			}
+			m_snappingClosestKeyTime = m_snappingClosestKey->getTime();
 		}
 
 		moveKeyframes( V2f( i.x, i.y ) );
@@ -713,14 +724,11 @@ bool AnimationGadget::dragEnd( GadgetPtr gadget, const DragDropEvent &event )
 
 		for( auto &curvePlug : m_curvePlugsEditable )
 		{
-			const Animation::CurvePlug::Keys &keys = curvePlug->keys();
-			for( Animation::CurvePlug::Keys::iterator it = keys.begin(); it != keys.end(); ++it )
+			for( auto &key : *curvePlug )
 			{
-				const Animation::Key &key = (*it);
-
-				if( b.intersects( V2f( key.time, key.value ) ) )
+				if( b.intersects( V2f( key.getTime(), key.getValue() ) ) )
 				{
-					m_selectedKeys.emplace( key, curvePlug );
+					m_selectedKeys.emplace( &key );
 				}
 			}
 		}
@@ -728,7 +736,10 @@ bool AnimationGadget::dragEnd( GadgetPtr gadget, const DragDropEvent &event )
 		break;
 	}
 	case DragMode::Moving :
+	{
+		m_overwrittenKeys.clear();
 		break;
+	}
 
 	default :
 		break;
@@ -795,39 +806,32 @@ void AnimationGadget::CurveGadget::doRenderLayer( Layer layer, const Style *styl
 		return;
 	}
 
-	// \todo This would benefit a bit from frustum culling, 
-	//       Needs either computation of visible area in world space or access to the parent
-
-	Animation::Key previousKey = Animation::Key();
+	Animation::ConstKeyPtr previousKey = nullptr;
 	V2f previousKeyPosition = V2f( 0 );
 
-	const Animation::CurvePlug::Keys &keys = m_curvePlug->keys();
-	for( Animation::CurvePlug::Keys::const_iterator it = keys.begin(); it != keys.end(); ++it )
+	for( const auto &key : *m_curvePlug )
 	{
-		const Animation::Key &key = (*it);
+		V2f keyPosition = viewportGadget->worldToRasterSpace( V3f( key.getTime(), key.getValue(), 0 ) );
 
-		V2f keyPosition = viewportGadget->worldToRasterSpace( V3f( key.time, key.value, 0 ) );
-		if( previousKey.type != Gaffer::Animation::Invalid )
+		if( previousKey )
 		{
 			// \todo: needs tangent computation/hand-off as soon as we support more interpolation modes
 			//        consider passing interpolation into renderCurveSegment to handle all drawing there
 
 			const Imath::Color3f *userColor = colorFromName();
 
-			if( key.type == Gaffer::Animation::Linear )
+			if( key.getType() == Gaffer::Animation::Linear )
 			{
 				style->renderCurveSegment( previousKeyPosition, keyPosition, /* inTangent */ V2f( 0 ), /* outTangent */ V2f( 0 ), getHighlighted() ? Style::HighlightedState : Style::NormalState, userColor );
 			}
-			else if( key.type == Gaffer::Animation::Step )
+			else if( key.getType() == Gaffer::Animation::Step )
 			{
 				style->renderLine( IECore::LineSegment3f( V3f( previousKeyPosition.x, previousKeyPosition.y, 0 ), V3f( keyPosition.x, previousKeyPosition.y, 0) ), 0.5, userColor );
 				style->renderLine( IECore::LineSegment3f( V3f( keyPosition.x, previousKeyPosition.y, 0 ), V3f( keyPosition.x, keyPosition.y, 0 ) ), 0.5, userColor );
 			}
 		}
 
-		// style->renderKeyFrame( keyPosition, getHighlighted() ? Style::HighlightedState : Style::NormalState );
-
-		previousKey = key;
+		previousKey = &key;
 		previousKeyPosition = keyPosition;
 	}
 

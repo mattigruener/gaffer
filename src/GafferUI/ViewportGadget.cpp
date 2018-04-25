@@ -530,8 +530,8 @@ class ViewportGadget::CameraController : public boost::noncopyable
 				float scale = newWidth / screenWindow.size().x;
 				if( m_motionType == Dolly )
 				{
-					screenWindow.min = (screenWindow.min - centre) * scale + centre;
-					screenWindow.max = (screenWindow.max - centre) * scale + centre;
+					screenWindow.min = (screenWindow.min - center) * scale + center;
+					screenWindow.max = (screenWindow.max - center) * scale + center;
 				}
 				else if( m_motionType == VariableAspectZoom )
 				{
@@ -551,13 +551,13 @@ class ViewportGadget::CameraController : public boost::noncopyable
 
 					if( m_zoomAxis == ZoomAxis::X )
 					{
-						screenWindow.min.x = (screenWindow.min.x - centre.x) * scale + centre.x;
-						screenWindow.max.x = (screenWindow.max.x - centre.x) * scale + centre.x;
+						screenWindow.min.x = (screenWindow.min.x - center.x) * scale + center.x;
+						screenWindow.max.x = (screenWindow.max.x - center.x) * scale + center.x;
 					}
 					else
 					{
-						screenWindow.min.y = (screenWindow.min.y - centre.y) * scale + centre.y;
-						screenWindow.max.y = (screenWindow.max.y - centre.y) * scale + centre.y;
+						screenWindow.min.y = (screenWindow.min.y - center.y) * scale + center.y;
+						screenWindow.max.y = (screenWindow.max.y - center.y) * scale + center.y;
 					}
 				}
 

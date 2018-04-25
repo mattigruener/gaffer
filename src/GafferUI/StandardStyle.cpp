@@ -822,7 +822,7 @@ void StandardStyle::renderCurveSegment( const Imath::V2f &start, const Imath::V2
 	Imath::V3f _startTangent = Imath::V3f( startTangent.x, startTangent.y, 0 );
 	Imath::V3f _endTangent = Imath::V3f( endTangent.x, endTangent.y, 0 );
 
-	V3f dir = ( _start - _end ).normalized();
+	V3f dir = ( _end - _start ).normalized();
 
 	glUniform3fv( g_v0Parameter, 1, _start.getValue() );
 	glUniform3fv( g_v1Parameter, 1, _end.getValue() );
@@ -836,7 +836,7 @@ void StandardStyle::renderCurveSegment( const Imath::V2f &start, const Imath::V2
 
 void StandardStyle::renderKeyFrame( const Imath::V2f &position, State state, const Imath::Color3f *userColor ) const
 {
-	int keyFrameSize = 3;
+	int keyFrameSize = 2;
 
 	glColor( colorForState( CurveColor, state, userColor ) );
 	renderSolidRectangle( Box2f( position - V2f( keyFrameSize ), position + V2f( keyFrameSize ) ) );

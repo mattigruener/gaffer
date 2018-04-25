@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (c) 2017, Matti Gruener. All rights reserved.
+//  Copyright (c) 2018, Matti Gruener. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are
@@ -46,15 +46,6 @@
 #include "GafferUI/Gadget.h"
 #include "GafferUI/ViewportGadget.h"
 
-namespace std
-{
-}
-
-namespace Gaffer
-{
-	IE_CORE_FORWARDDECLARE( StandardSet );
-}
-
 namespace GafferUI
 {
 
@@ -64,9 +55,17 @@ namespace AnimationLayer
 {
 	constexpr Gadget::Layer Grid = Gadget::Layer::Back;
 	constexpr Gadget::Layer Curves = Gadget::Layer::MidBack;
-	constexpr Gadget::Layer Highlighting = Gadget::Layer::Main;
+	constexpr Gadget::Layer Keys = Gadget::Layer::Main;
 	constexpr Gadget::Layer Axes = Gadget::Layer::MidFront;
 	constexpr Gadget::Layer Overlay = Gadget::Layer::Front;
+};
+
+struct KeyPtrLessThan
+{
+	bool operator()( const Gaffer::Animation::KeyPtr &lhs, const Gaffer::Animation::KeyPtr &rhs ) const
+	{
+		return lhs->getTime() < rhs->getTime();
+	}
 };
 
 IE_CORE_FORWARDDECLARE( CurveGadget );
@@ -135,6 +134,7 @@ private :
 		std::vector<float> secondary;
 	};
 
+	// \todo make a local helper in anonymous namespace
 	void computeGrid( AxisDefinition &x, AxisDefinition &y ) const;
 
 	bool buttonPress( GadgetPtr gadget, const ButtonEvent &event );
@@ -155,64 +155,9 @@ private :
 	std::vector<Gaffer::Animation::CurvePlugPtr> m_curvePlugsEditable;
 	std::vector<GadgetPtr> m_animationCurves;
 
-	typedef std::pair<Gaffer::Animation::Key, Gaffer::Animation::CurvePlugPtr> UniqueKey;
-	typedef boost::multi_index_container<UniqueKey> KeyContainer;
-	typedef KeyContainer::nth_index<0>::type KeyContainerIndex;
+	std::set<Gaffer::Animation::KeyPtr, KeyPtrLessThan> m_selectedKeys;
 
-	KeyContainer m_selectedKeys;
-
-	struct UniqueKeyComparisonByTime
-	{
-		bool operator()( float time, const UniqueKey& k) const
-		{
-			return time < k.first.time;
-		}
-
-		bool operator()( const UniqueKey& k, float time ) const
-		{
-			return k.first.time < time;
-		}
-	};
-
-	struct UniqueKeyChangeTime
-	{
-
-		UniqueKeyChangeTime( float  newTime )
-			: newTime( newTime )
-		{
-		}
-
-		void operator()(UniqueKey& k)
-		{
-			k.first.time = newTime;
-		}
-
-		private:
-
-			float newTime;
-
-	};
-
-	struct UniqueKeyChangeValue
-	{
-
-		UniqueKeyChangeValue( float  newValue )
-			: newValue( newValue )
-		{
-		}
-
-		void operator()(UniqueKey& k)
-		{
-			k.first.value = newValue;
-		}
-
-		private:
-
-			float newValue;
-
-	};
-
-	int m_currentFrame;
+	float m_currentFrame;
 
 	enum class DragMode
 	{
@@ -233,8 +178,11 @@ private :
 	Imath::V2f m_lastDragPosition;
 	DragMode m_dragMode;
 	MoveAxis m_moveAxis;
-	UniqueKey m_snappingClosestKey;
-	float m_snappingPreviousOffset;
+	Gaffer::Animation::KeyPtr m_snappingClosestKey;
+	double m_xSnappingPreviousOffset;
+	std::set<std::pair<Gaffer::Animation::KeyPtr, Gaffer::Animation::CurvePlugPtr> > m_overwrittenKeys;
+
+	float m_snappingClosestKeyTime;
 };
 
 IE_CORE_DECLAREPTR( AnimationGadget );
