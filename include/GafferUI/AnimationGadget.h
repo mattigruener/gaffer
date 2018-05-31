@@ -68,8 +68,6 @@ struct KeyPtrLessThan
 	}
 };
 
-IE_CORE_FORWARDDECLARE( CurveGadget );
-
 class GAFFERUI_API AnimationGadget : public Gadget
 {
 
@@ -84,32 +82,6 @@ public :
 	void setVisiblePlugs( const std::vector<Gaffer::Plug *> &plugs );
 	void setEditablePlugs( const std::vector<Gaffer::Plug *> &plugs );
 	void setFrame( float frame );
-
-	class CurveGadget : public Gadget
-	{
-
-	public :
-		CurveGadget( std::string name, const Gaffer::Animation::CurvePlug *curvePlug );
-		~CurveGadget() override;
-
-		std::string getToolTip( const IECore::LineSegment3f &line ) const override;
-
-	protected :
-
-		void doRenderLayer( Layer layer, const Style *style ) const override;
-
-	private :
-
-		void enter( GadgetPtr gadget, const ButtonEvent &event );
-		void leave( GadgetPtr gadget, const ButtonEvent &event );
-
-		const Imath::Color3f *colorFromName() const;
-
-		IECore::InternedString m_name;
-		const Gaffer::Animation::CurvePlug *m_curvePlug;
-	};
-
-	IE_CORE_DECLAREPTR( CurveGadget );
 
 protected :
 

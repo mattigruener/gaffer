@@ -57,20 +57,44 @@ namespace
 {
 
 // \todo: Needs a way to determine fps at some point. For now, we always use 24 fps
-float frameToTime( float frame )
+template<typename T>
+float frameToTime( T frame )
 {
 	return frame / 24.0;
 }
 
-float timeToFrame( float time )
+template<typename T>
+float timeToFrame( T time )
 {
 	return time * 24.0;
 }
 
-bool areFramesIdentical( float lhsTime, float rhsTime )
+class CurveGadget : public Gadget
 {
-	return round( timeToFrame( lhsTime ) ) == round( timeToFrame( rhsTime ) );
-}
+
+	public :
+
+		CurveGadget( std::string name, const Gaffer::Animation::CurvePlug *curvePlug );
+		~CurveGadget() override;
+
+		std::string getToolTip( const IECore::LineSegment3f &line ) const override;
+
+	protected :
+
+		void doRenderLayer( Layer layer, const Style *style ) const override;
+
+	private :
+
+		void enter( GadgetPtr gadget, const ButtonEvent &event );
+		void leave( GadgetPtr gadget, const ButtonEvent &event );
+
+		const Imath::Color3f *colorFromName() const;
+
+		IECore::InternedString m_name;
+		const Gaffer::Animation::CurvePlug *m_curvePlug;
+};
+
+IE_CORE_DECLAREPTR( CurveGadget );
 
 } // namespace
 
@@ -175,7 +199,8 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 		style->renderSolidRectangle( Box2f( V2f( 0 ) , V2f( 60, resolution.y - 20 ) ) );
 		style->renderSolidRectangle( Box2f( V2f( 0, resolution.y - 20 ) , V2f( resolution.x, resolution.y ) ) );
 
-		boost::format format( "%.2f" );
+		boost::format formatX( "%.2f" );
+		boost::format formatY( "%.3f" );
 		int textScale = 10;
 
 		// \todo Clean up code duplication.
@@ -190,7 +215,7 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 			glPushMatrix();
 
-			std::string label = boost::str( format % x.second );
+			std::string label = boost::str( formatX % x.second );
 
 			Box3f labelBound = style->textBound( Style::BodyText, label );
 
@@ -211,7 +236,7 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 			glPushMatrix();
 
-			std::string label = boost::str( format % y.second );
+			std::string label = boost::str( formatY % y.second );
 
 			Box3f labelBound = style->textBound( Style::BodyText, label );
 
@@ -271,6 +296,12 @@ void AnimationGadget::viewportChanged()
 	requestRender();
 }
 
+// Compute grid line locations. Note that positions are given in raster space so
+// that lines can get drawn directly.
+// For the time-dimension we limit the computed locations to multiples of one
+// frame plus one level of unlabeled, dividing lines. Resulting at a minimum
+// distance between lines of a fifth of a frame when zoomed in all the way.
+// For the value dimension we allow sub-steps as small as 0.001.
 void AnimationGadget::computeGrid( AxisDefinition &x, AxisDefinition &y ) const
 {
 	Imath::V2i resolution = m_viewportGadget->getViewport();
@@ -283,60 +314,75 @@ void AnimationGadget::computeGrid( AxisDefinition &x, AxisDefinition &y ) const
 	Box2f viewportBoundsFrames( viewportBounds.min * 24, viewportBounds.max * 24 );
 	V2i labelMinSize( 50, 20 );
 	int xStride = 1;
-	int yStride = 1;
+	float yStride = 1;
 
 	// \todo the box's size() is unrealiable because it considers the box empty for the inverted coords we seem to have here
 	V2f pxPerUnit = V2f(
 		resolution.x / abs( viewportBoundsFrames.min.x - viewportBoundsFrames.max.x ),
 		resolution.y / abs( viewportBounds.min.y - viewportBounds.max.y ) );
 
+	// Compute the stride to use for the time dimension.
 	if( pxPerUnit.x < labelMinSize.x )
 	{
 		xStride = 5;
 		pxPerUnit.x *= 5;
 
-		while( pxPerUnit.x < labelMinSize.x && pxPerUnit.x != 0 )
+		// If there's not enough space for this zoom level, try using every 10th frame.
+ 		while( pxPerUnit.x < labelMinSize.x && pxPerUnit.x != 0 )
 		{
 			xStride *= 10;
 			pxPerUnit.x *= 10;
 		}
 	}
 
+	// Compute the stride to use for the value dimension.
 	if( pxPerUnit.y < labelMinSize.y )
 	{
 		yStride = 5;
 		pxPerUnit.y *= 5;
 
+		// If there's not enough space for this zoom level, increase the spacing
+		// between values to be drawn.
 		while( pxPerUnit.y < labelMinSize.y && pxPerUnit.y != 0 )
 		{
 			yStride *= 10;
 			pxPerUnit.y *= 10;
 		}
 	}
-
-	for( int i = std::ceil( viewportBoundsFrames.min.x ) - xStride; i < std::ceil( viewportBoundsFrames.max.x ); ++i )
+	else
 	{
-		if( xStride == 1 || ( i % xStride ) == 0 )
+		// If we actually have too much space between values, progressively
+		// decrease the stride to show smaller value deltas.
+		float scale = 1;
+		while( pxPerUnit.y / 10.0 > labelMinSize.y && scale > 0.001 )
 		{
-			float frame = i / 24.0;
-			x.main.push_back( std::make_pair( m_viewportGadget->worldToRasterSpace( V3f( frame, 0, 0 ) ).x, i ) );
-
-			float subStride = xStride / ( 5.0 * 24 );
-			for( int s = 1; s < 5; ++s )
-			{
-				x.secondary.push_back( m_viewportGadget->worldToRasterSpace( V3f( frame + s * subStride, 0, 0 ) ).x );
-			}
+			yStride *= 0.1;
+			pxPerUnit /= 10.0;
+			scale /= 10.0;
 		}
 	}
 
-	for( int j = std::ceil( viewportBounds.max.y ) - yStride; j < std::ceil( viewportBounds.min.y ); ++j )
+	// Compute line locations based on bounds and strides in both dimensions.
+	int lowerBoundX = std::floor( viewportBoundsFrames.min.x / xStride ) * xStride - xStride;
+	int upperBoundX = std::ceil( viewportBoundsFrames.max.x );
+	for( int i = lowerBoundX; i < upperBoundX; i += xStride )
 	{
-		if( yStride == 1 || ( j % yStride ) == 0 )
+		float time = frameToTime( i );
+		x.main.push_back( std::make_pair( m_viewportGadget->worldToRasterSpace( V3f( time, 0, 0 ) ).x, i ) );
+
+		float subStride = frameToTime( xStride / 5.0 );
+		for( int s = 1; s < 5; ++s )
 		{
+			x.secondary.push_back( m_viewportGadget->worldToRasterSpace( V3f( time + s * subStride, 0, 0 ) ).x );
+		}
+	}
+
+	float lowerBoundY = std::floor( viewportBounds.max.y / yStride ) * yStride - yStride;
+	float upperBoundY = viewportBounds.min.y + yStride;
+	for( float j = lowerBoundY; j < upperBoundY; j += yStride )
+	{
 			y.main.push_back( std::make_pair( m_viewportGadget->worldToRasterSpace( V3f( 0, j, 0 ) ).y, j ) );
-		}
 	}
-
 }
 
 void AnimationGadget::setVisiblePlugs( const std::vector<Gaffer::Plug *> &plugs )
@@ -377,7 +423,6 @@ void AnimationGadget::setVisiblePlugs( const std::vector<Gaffer::Plug *> &plugs 
 void AnimationGadget::plugDirtied( Gaffer::Plug *plug )
 {
 	requestRender();
-	// printf("Dirty dirty plug: %s\n", plug->fullName().c_str());
 }
 
 void AnimationGadget::setEditablePlugs( const std::vector<Gaffer::Plug *> &plugs )
@@ -414,7 +459,7 @@ void AnimationGadget::insertKeyframes()
 	for( auto &curvePlug : m_curvePlugsEditable )
 	{
 		float time = frameToTime( m_currentFrame );
-		if( !curvePlug->hasKey( time ) )
+		if( !curvePlug->closestKey( time, 0.004 ) ) // \todo: use proper ticks
 		{
 			float value = curvePlug->evaluate( time );
 			curvePlug->addKey( new Animation::Key( time, value ) ); // \todo: should eventually specify key type
@@ -449,11 +494,9 @@ void AnimationGadget::moveKeyframes( const V2f currentDragPosition )
 		xSnappingCurrentOffset = dragOffset;
 		if( m_snappingClosestKey )
 		{
-			// printf( "closest key at %f\n", m_snappingClosestKey->getTime() * 24.0 );
 			float unsnappedFrame = timeToFrame( m_snappingClosestKeyTime + xSnappingCurrentOffset );
 			xSnappingCurrentOffset = frameToTime( round( unsnappedFrame ) ) - m_snappingClosestKeyTime;
 		}
-		printf( "snapOffset: %f\n", xSnappingCurrentOffset * 24 );
 	}
 
 	for( auto &key : m_selectedKeys )
@@ -473,11 +516,11 @@ void AnimationGadget::moveKeyframes( const V2f currentDragPosition )
 			// If a key already exists on the new frame, we overwrite it, but
 			// store it for reinserting should the drag continue and the frame
 			// free up again.
-			Animation::KeyPtr potentialClash = key->parent()->closestKey( newTime );
-			if( potentialClash != key && areFramesIdentical( newTime, potentialClash->getTime() ) )
+			Animation::KeyPtr clashingKey = key->parent()->closestKey( newTime, 0.004 );
+			if( clashingKey && clashingKey != key )
 			{
-				m_overwrittenKeys.emplace( potentialClash, potentialClash->parent() );
-				potentialClash->parent()->removeKey( potentialClash );
+				m_overwrittenKeys.emplace( clashingKey, clashingKey->parent() );
+				clashingKey->parent()->removeKey( clashingKey );
 			}
 
 			key->setTime( newTime );
@@ -487,17 +530,16 @@ void AnimationGadget::moveKeyframes( const V2f currentDragPosition )
 	// Check if any of the previously overwritten keys can be inserted back into the curve
 	for( auto keyAndParent : m_overwrittenKeys )
 	{
-		Animation::KeyPtr potentialClash = keyAndParent.second->closestKey( keyAndParent.first->getTime() );
-		if( !potentialClash )
+		Animation::KeyPtr clashingKey = keyAndParent.second->closestKey( keyAndParent.first->getTime(), 0.004 ); // \todo: use proper ticks
+
+		if( clashingKey )
 		{
+			// frame is still occupied by another key.
 			continue;
 		}
 
-		if( !areFramesIdentical( keyAndParent.first->getTime(), potentialClash->getTime() ) )
-		{
-			keyAndParent.second->addKey( keyAndParent.first );
-			m_overwrittenKeys.erase( keyAndParent );
-		}
+		keyAndParent.second->addKey( keyAndParent.first );
+		m_overwrittenKeys.erase( keyAndParent );
 	}
 
 	if( m_moveAxis != MoveAxis::Y )
@@ -777,20 +819,21 @@ bool AnimationGadget::keyPress( GadgetPtr gadget, const KeyEvent &event )
 
 	return false;
 }
-AnimationGadget::CurveGadget::CurveGadget( std::string name, const Gaffer::Animation::CurvePlug *curvePlug )
+
+CurveGadget::CurveGadget( std::string name, const Gaffer::Animation::CurvePlug *curvePlug )
 	: m_name( name ), m_curvePlug( curvePlug )
 {
 
-	enterSignal().connect( boost::bind( &AnimationGadget::CurveGadget::enter, this, ::_1, ::_2 ) );
-	leaveSignal().connect( boost::bind( &AnimationGadget::CurveGadget::leave, this, ::_1, ::_2 ) );
+	enterSignal().connect( boost::bind( &CurveGadget::enter, this, ::_1, ::_2 ) );
+	leaveSignal().connect( boost::bind( &CurveGadget::leave, this, ::_1, ::_2 ) );
 
 }
 
-AnimationGadget::CurveGadget::~CurveGadget()
+CurveGadget::~CurveGadget()
 {
 }
 
-void AnimationGadget::CurveGadget::doRenderLayer( Layer layer, const Style *style ) const
+void CurveGadget::doRenderLayer( Layer layer, const Style *style ) const
 {
 	const ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
 
@@ -837,23 +880,23 @@ void AnimationGadget::CurveGadget::doRenderLayer( Layer layer, const Style *styl
 
 }
 
-std::string AnimationGadget::CurveGadget::getToolTip( const IECore::LineSegment3f &line ) const
+std::string CurveGadget::getToolTip( const IECore::LineSegment3f &line ) const
 {
 	return m_name;
 }
 
-void AnimationGadget::CurveGadget::enter( GadgetPtr gadget, const ButtonEvent &event )
+void CurveGadget::enter( GadgetPtr gadget, const ButtonEvent &event )
 {
 	setHighlighted( true );
 }
 
-void AnimationGadget::CurveGadget::leave( GadgetPtr gadget, const ButtonEvent &event )
+void CurveGadget::leave( GadgetPtr gadget, const ButtonEvent &event )
 {
 	setHighlighted( false );
 }
 
 // \todo: consider making the colorForAxes function in StandardStyle public?
-const Imath::Color3f *AnimationGadget::CurveGadget::colorFromName() const
+const Imath::Color3f *CurveGadget::colorFromName() const
 {
 	if( boost::ends_with( m_name.string(), ".x" ) )
 	{
