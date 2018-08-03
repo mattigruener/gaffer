@@ -247,6 +247,7 @@ class GAFFER_API GraphComponent : public IECore::RunTimeTyped, public boost::sig
 		void setNameInternal( const IECore::InternedString &name );
 		void addChildInternal( GraphComponentPtr child );
 		void removeChildInternal( GraphComponentPtr child, bool emitParentChanged );
+		void insertChildInternal( GraphComponentPtr child, int index );
 
 		/// \todo The memory overhead of all these signals may become too great.
 		/// At this point we need to reimplement the signal returning functions to

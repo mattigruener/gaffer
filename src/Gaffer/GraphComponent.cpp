@@ -309,6 +309,26 @@ void GraphComponent::addChildInternal( GraphComponentPtr child )
 	child->parentChangedSignal()( child.get(), previousParent );
 }
 
+void GraphComponent::insertChildInternal(Gaffer::GraphComponentPtr child, int index)
+{
+	child->parentChanging( this );
+	GraphComponent *previousParent = child->m_parent;
+	if( previousParent )
+	{
+		// remove the child from the previous parent, but don't emit parentChangedSignal.
+		// this prevents a parent changed signal with new parent null followed by a parent
+		// changed signal with the new parent.
+		previousParent->removeChildInternal( child, false );
+	}
+	// m_children.push_back( child );
+	m_children.insert( m_children.begin() + index, child );
+
+	child->m_parent = this;
+	child->setName( child->m_name.value() ); // to force uniqueness
+	childAddedSignal()( this, child.get() );
+	child->parentChangedSignal()( child.get(), previousParent );
+}
+
 void GraphComponent::removeChild( GraphComponentPtr child )
 {
 	if( child->m_parent!=this )
@@ -318,6 +338,19 @@ void GraphComponent::removeChild( GraphComponentPtr child )
 
 	if( refCount() )
 	{
+		auto children = child->parent()->children();
+		int index = -1;
+		int i = 0;
+		for( const auto &childIt : children )
+		{
+			if( childIt == child )
+			{
+				index = i;
+				break;
+			}
+			++i;
+		}
+
 		// someone is pointing to us, so we may have a ScriptNode ancestor and we should do things
 		// in an undoable way.
 		Action::enact(
@@ -325,7 +358,7 @@ void GraphComponent::removeChild( GraphComponentPtr child )
 			// ok to bind raw pointers to this, because enact() guarantees
 			// the lifetime of the subject.
 			boost::bind( &GraphComponent::removeChildInternal, this, child, true ),
-			boost::bind( &GraphComponent::addChildInternal, this, child )
+			boost::bind( &GraphComponent::insertChildInternal, this, child, index )
 		);
 	}
 	else
