@@ -641,6 +641,32 @@ class ShadingEngineTest( GafferOSLTest.OSLTestCase ) :
 				c,
 				imath.Color3f( f, f, f ) )
 
+	def testCanReadDoubleData( self ) :
+
+		s = self.compileShader( os.path.dirname( __file__ ) +  "/shaders/doubleAttribute.osl" )
+		e = GafferOSL.ShadingEngine( IECoreScene.ShaderNetwork(
+			shaders = {
+				"output" : IECoreScene.Shader( s, "osl:surface", { "name" : "doubleattr", "piname" : "pi" } )
+			},
+			output = "output"
+		) )
+
+		p = self.rectanglePoints()
+
+		numP = len(p["P"])
+		p["doubleattr"] = IECore.DoubleVectorData( [ float(x) / numP for x in range( numP ) ] )
+		p["pi"] = IECore.DoubleData( 3.14 )
+
+		r = e.shade( p )
+
+		for i, c in enumerate( r["Ci"] ) :
+
+			expected = float(i) / numP
+
+			self.assertEqual(
+				c,
+				imath.Color3f( 3.14, expected, expected ) )
+
 	def testUVProvidedAsV2f( self ) :
 
 		shader = self.compileShader( os.path.dirname( __file__ ) + "/shaders/globals.osl" )
