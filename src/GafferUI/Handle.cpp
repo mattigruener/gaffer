@@ -68,7 +68,7 @@ using namespace GafferUI;
 IE_CORE_DEFINERUNTIMETYPED( Handle );
 
 Handle::Handle( const std::string &name )
-	:	Gadget( name ), m_hovering( false ), m_rasterScale( 0.0f ), m_visibleOnHover( false )
+	:	Gadget( name ), m_hovering( false ), m_rasterScale( 0.0f ), m_visibleOnHover( false ), m_transformationFactor( 1 )
 {
 	enterSignal().connect( boost::bind( &Handle::enter, this ) );
 	leaveSignal().connect( boost::bind( &Handle::leave, this ) );
@@ -185,6 +185,11 @@ Imath::V3f Handle::rasterScaleFactor() const
 	return s1 * s2;
 }
 
+float Handle::transformationFactor() const
+{
+	return m_transformationFactor;
+}
+
 void Handle::enter()
 {
 	m_hovering = true;
@@ -204,6 +209,8 @@ bool Handle::buttonPress( const ButtonEvent &event )
 
 IECore::RunTimeTypedPtr Handle::dragBeginInternal( const DragDropEvent &event )
 {
+	m_transformationFactor = event.modifiers & ButtonEvent::Shift ? 0.1 : 1.0;
+
 	dragBegin( event );
 	return IECore::NullObject::defaultNullObject();
 }

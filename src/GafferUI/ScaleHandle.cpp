@@ -98,43 +98,45 @@ Imath::V3i ScaleHandle::axisMask() const
 
 Imath::V3f ScaleHandle::scaling( const DragDropEvent &event ) const
 {
+	float scaleFactor = transformationFactor();
+
 	switch( m_axes )
 	{
 		case Style::X :
 			return V3f(
-				m_drag.position( event ) / m_drag.startPosition(),
+				1 + ( m_drag.position( event ) / m_drag.startPosition() - 1 ) * scaleFactor,
 				1,
 				1
 			);
 		case Style::Y :
 			return V3f(
 				1,
-				m_drag.position( event ) / m_drag.startPosition(),
+				1 + ( m_drag.position( event ) / m_drag.startPosition() - 1 ) * scaleFactor,
 				1
 			);
 		case Style::Z :
 			return V3f(
 				1,
 				1,
-				m_drag.position( event ) / m_drag.startPosition()
+				1 + ( m_drag.position( event ) / m_drag.startPosition() - 1 ) * scaleFactor
 			);
 		case Style::XY : {
-			const float s = m_drag.position( event ) / m_drag.startPosition();
+			const float s = 1 + ( m_drag.position( event ) / m_drag.startPosition() - 1 ) * scaleFactor;
 			return V3f( s, s, 1 );
 		}
 		case Style::XZ : {
-			const float s = m_drag.position( event ) / m_drag.startPosition();
+			const float s = 1 + ( m_drag.position( event ) / m_drag.startPosition() - 1 ) * scaleFactor;
 			return V3f( s, 1, s );
 		}
 		case Style::YZ : {
-			const float s = m_drag.position( event ) / m_drag.startPosition();
+			const float s = 1 + ( m_drag.position( event ) / m_drag.startPosition() - 1 ) * scaleFactor;
 			return V3f( 1, s, s );
 		}
 		case Style::XYZ : {
 			const ViewportGadget *viewport = ancestor<ViewportGadget>();
 			const V2f p = viewport->gadgetToRasterSpace( event.line.p1, this );
 			const float d = (p.x - m_uniformDragStartPosition.x) / (float)viewport->getViewport().x;
-			return V3f( 1.0f + d * 3.0f );
+			return V3f( 1.0f + d * 3.0f * scaleFactor );
 		}
 		default :
 			return V3f( 1 );

@@ -139,7 +139,9 @@ Imath::Eulerf RotateHandle::rotation( const DragDropEvent &event ) const
 		return e;
 	}
 
-	const float r = closestRotation( m_drag.position( event ), m_rotation ) - closestRotation( m_drag.startPosition(), 0.0f );
+	const float rotationFactor = transformationFactor();
+	const float r = ( closestRotation( m_drag.position( event ), m_rotation ) - closestRotation( m_drag.startPosition(), 0.0f ) ) * rotationFactor;
+
 	switch( m_axes )
 	{
 		case Style::X :

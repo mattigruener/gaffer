@@ -147,6 +147,10 @@ class GAFFERUI_API Handle : public Gadget
 		// at the requested size in raster space.
 		Imath::V3f rasterScaleFactor() const;
 
+		// Factor that derived classes should use to determine the precision of
+		// the transformation.
+		float transformationFactor() const;
+
 	private :
 
 		void enter();
@@ -159,6 +163,7 @@ class GAFFERUI_API Handle : public Gadget
 		bool m_hovering;
 		float m_rasterScale;
 		bool m_visibleOnHover;
+		float m_transformationFactor;
 
 };
 

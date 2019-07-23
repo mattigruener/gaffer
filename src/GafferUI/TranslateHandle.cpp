@@ -96,19 +96,21 @@ Imath::V3i TranslateHandle::axisMask() const
 
 Imath::V3f TranslateHandle::translation( const DragDropEvent &event ) const
 {
+	float translationFactor = transformationFactor();
+
 	switch( m_axes )
 	{
 		case Style::X :
-			return V3f( m_linearDrag.position( event ) - m_linearDrag.startPosition(), 0, 0 );
+			return V3f( ( m_linearDrag.position( event ) - m_linearDrag.startPosition() ) * translationFactor, 0, 0 );
 		case Style::Y :
-			return V3f( 0, m_linearDrag.position( event ) - m_linearDrag.startPosition(), 0 );
+			return V3f( 0, ( m_linearDrag.position( event ) - m_linearDrag.startPosition() ) * translationFactor, 0 );
 		case Style::Z :
-			return V3f( 0, 0, m_linearDrag.position( event ) - m_linearDrag.startPosition() );
+			return V3f( 0, 0, ( m_linearDrag.position( event ) - m_linearDrag.startPosition() ) * translationFactor );
 		case Style::XY :
 		case Style::XZ :
 		case Style::YZ :
 		case Style::XYZ : {
-			const V2f t = m_planarDrag.position( event ) - m_planarDrag.startPosition();
+			const V2f t = ( m_planarDrag.position( event ) - m_planarDrag.startPosition() ) * translationFactor;
 			return m_planarDrag.axis0() * t[0] + m_planarDrag.axis1() * t[1];
 		}
 		default :
