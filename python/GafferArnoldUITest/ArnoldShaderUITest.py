@@ -189,7 +189,27 @@ root["SceneWriter"].execute()
 		self.assertEqual( parms["uvcoords"].value, imath.V2f( 12, 13 ) )
 		self.assertEqual( parms["filename"].value, "overrideUserDefault" )
 		self.assertEqual( parms["filter"].value, "bilinear" )
-		
+
+	def testBaseClassMetadataLookup( self ) :
+
+		surface = GafferArnold.ArnoldShader()
+		surface.loadShader( "standard_surface" )
+
+		Gaffer.Metadata.registerValue( "ai:surface:standard_surface:aov_id1", "userDefault", "id_1" )
+
+		self.assertEqual( Gaffer.Metadata.value( surface["parameters"]["aov_id1"], "userDefault" ), "id_1" )
+
+		def plugLookup( plug ) :
+			if plug == surface["parameters"]["specular_roughness"] :
+				return 0.2
+
+		# simulate an entry for 'userDefault' read from an .mtd file
+		Gaffer.Metadata.registerValue( GafferArnold.ArnoldShader, "parameters.*", 'userDefault', plugLookup )
+
+		self.assertAlmostEqual( Gaffer.Metadata.value( surface["parameters"]["specular_roughness"], "userDefault" ), 0.2 )
+
+		# An entry for another plug as checked above should not override the previously registered value for aov_id1
+		self.assertEqual( Gaffer.Metadata.value( surface["parameters"]["aov_id1"], "userDefault" ), "id_1" )
 
 if __name__ == "__main__":
 	unittest.main()
