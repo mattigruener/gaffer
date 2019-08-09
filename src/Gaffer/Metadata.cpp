@@ -650,7 +650,11 @@ IECore::ConstDataPtr Metadata::valueInternal( const GraphComponent *target, IECo
 							auto vIt = it->second.find( key );
 							if( vIt != it->second.end() )
 							{
-								return vIt->second( plug );
+								IECore::ConstDataPtr plugMatch = vIt->second( plug );
+								if( plugMatch )
+								{
+									return plugMatch;
+								}
 							}
 						}
 					}
